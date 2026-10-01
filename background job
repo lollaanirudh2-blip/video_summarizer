@@ -1,0 +1,23 @@
+def format_summary(s: dict) -> str:
+    """Turn the summary dict into clean plain text for the textarea / Notepad / read-aloud."""
+    strip = lambda t: t.replace("**", "")
+    lines = []
+    if s.get("overview"):
+        lines += ["OVERVIEW", strip(s["overview"]), ""]
+    for sec in s.get("sections", []):
+        lines.append(sec["heading"].upper())
+        lines += [f"  - {strip(p)}" for p in sec["points"]]
+        lines.append("")
+    if s.get("takeaways"):
+        lines.append("KEY TAKEAWAYS")
+        lines += [f"  {i}. {strip(t)}" for i, t in enumerate(s["takeaways"], 1)]
+    return "\n".join(lines).strip()
+
+
+def finish(jid, text, summary, method, **extra):
+    """Store the result under every name the front-end might read, so nothing is 'undefined'."""
+    st = format_summary(summary)
+    update(jid, status="done", stage="Done", percent=100, transcript=text,
+           summary=summary, summary_text=st, text=st,
+           result={"summary": st, "summary_text": st, "transcript": text, **extra},
+           method=method, **extra)

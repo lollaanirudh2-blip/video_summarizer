@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Media Summarizer</title>
+<style>
+  :root { --bg:#eef1f5; --ink:#1b2430; --muted:#5d6b7c; --line:#cfd7e1; --paper:#fffef8; --accent:#1f5eff; --panel:#fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141a22; --ink:#e7ecf3; --muted:#93a1b3; --line:#2b3542; --paper:#1d2530; --accent:#6d97ff; --panel:#1a212b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 Georgia, "Times New Roman", serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 20px 60px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; }
+  p.lead { margin: 0 0 24px; color: var(--muted); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+  label { display:block; font-weight:bold; margin-bottom:6px; }
+  input[type=text] { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font-size:1rem; }
+  .drop { border:2px dashed var(--line); border-radius:8px; padding:20px; text-align:center; color:var(--muted); cursor:pointer; }
+  .drop.over { border-color:var(--accent); color:var(--accent); }
+  .or { text-align:center; color:var(--muted); margin:12px 0; }
+  button { font:inherit; padding:9px 16px; border-radius:6px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:bold; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  #status { color:var(--muted); min-height:1.5em; margin-top:10px; }
+  #status.err { color:#c62828; }
+  .notepad { border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .notepad .bar { background:var(--line); padding:6px 12px; font-family:system-ui, sans-serif; font-size:.85rem; color:var(--ink); }
+  textarea { width:100%; min-height:220px; border:0; padding:14px; background:var(--paper); color:var(--ink);
+    font:1rem/1.6 "Courier New", monospace; resize:vertical; }
+  details { margin-top:12px; } summary { cursor:pointer; color:var(--muted); }
+  #transcript { white-space:pre-wrap; color:var(--muted); font-size:.9rem; margin-top:8px; }
+  select { padding:8px; border-radius:6px; border:1px solid var(--line); background:var(--panel); color:var(--ink); max-width:220px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Media Summarizer</h1>
+  <p class="lead">Paste a video or audio link, or upload a file. You get the summary in a notepad and can have it read aloud.</p>
+
+  <section class="card">
+    <label for="url">Video or audio link</label>
+    <input type="text" id="url" placeholder="https://www.youtube.com/watch?v=...">
+    <div class="or">or</div>
+    <div class="drop" id="drop" tabindex="0">
+      <span id="dropText">Drop a video or audio file here, or click to choose one</span>
+      <input type="file" id="file" accept="audio/*,video/*" hidden>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="go">Summarize</button>
+      <button id="clear">Clear</button>
+    </div>
+    <div id="status" role="status"></div>
+  </section>
+
+  <section class="card">
+    <div class="notepad">
+      <div class="bar">Summary.txt</div>
+      <textarea id="notes" placeholder="Your summary will appear here. You can edit it."></textarea>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="speak">Read aloud</button>
+      <button id="stop">Stop</button>
+      <select id="voice" aria-label="Voice"></select>
+      <button id="notepad">Open in Notepad</button>
+      <button id="download">Download .txt</button>
+    </div>
+    <details>
+      <summary>Show full transcript</summary>
+      <div id="transcript"></div>
+    </details>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let chosenFile = null;
+
+// ----- file picking / drag & drop -----
+const drop = $("drop"), fileInput = $("file");
+function setFile(f) { chosenFile = f; $("dropText").textContent = f ? "Selected: " + f.name : "Drop a video or audio file here, or click to choose one"; }
+drop.onclick = () => fileInput.click();
+drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") fileInput.click(); };
+fileInput.onchange = () => setFile(fileInput.files[0] || null);
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+
+// ----- summarize -----
+function status(msg, err=false) { $("status").textContent = msg; $("status").className = err ? "err" : ""; }
+
+$("go").onclick = async () => {
+  const url = $("url").value.trim();
+  if (!url && !chosenFile) return status("Paste a link or choose a file first.", true);
+  const fd = new FormData();
+  if (chosenFile) fd.append("file", chosenFile); else fd.append("url", url);
+  $("go").disabled = true;
+  status("Working: downloading, transcribing and summarizing. Long media can take a few minutes...");
+  try {
+    const res = await fetch("/api/summarize", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    $("notes").value = data.summary;
+    $("transcript").textContent = data.transcript;
+    status("Done. Press “Read aloud” to listen.");
+    speak();
+  } catch (e) { status(e.message, true); }
+  finally { $("go").disabled = false; }
+};
+
+$("clear").onclick = () => { $("url").value = ""; $("notes").value = ""; $("transcript").textContent = ""; setFile(null); fileInput.value = ""; speechSynthesis.cancel(); status(""); };
+
+// ----- text to speech (browser built-in) -----
+function loadVoices() {
+  const sel = $("voice"); const voices = speechSynthesis.getVoices();
+  sel.innerHTML = voices.map((v, i) => `<option value="${i}">${v.name} (${v.lang})</option>`).join("");
+}
+speechSynthesis.onvoiceschanged = loadVoices; loadVoices();
+
+function speak() {
+  const text = $("notes").value.trim(); if (!text) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = speechSynthesis.getVoices()[$("voice").value]; if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+$("speak").onclick = speak;
+$("stop").onclick = () => speechSynthesis.cancel();
+
+// ----- notepad / download -----
+$("notepad").onclick = async () => {
+  const res = await fetch("/api/open-notepad", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ text: $("notes").value }) });
+  status(res.ok ? "Opened in Notepad." : "Could not open Notepad.", !res.ok);
+};
+$("download").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([$("notes").value], { type: "text/plain" }));
+  a.download = "summary.txt"; a.click();
+};
+</script>
+</body>
+</html>
