@@ -1,0 +1,22 @@
+# Media Summarizer - Python dependencies
+# Requires Python 3.8 or newer
+# Install with:  pip install -r requirements.txt
+
+flask>=2.3
+requests>=2.31
+python-dotenv>=1.0
+
+# yt-dlp breaks often as sites change - keep it current:
+#   pip install -U yt-dlp
+yt-dlp
+
+# ---------------------------------------------------------------
+# Not installable via pip (set these up separately):
+#   .env file next to the script:
+#       ASSEMBLYAI_API_KEY=your-assemblyai-key      (required)
+#       DEEPSEEK_API_KEY=sk-your-deepseek-key       (optional)
+#   Deno         - needed by yt-dlp for YouTube downloads
+#   ffmpeg       - optional, helps yt-dlp with some formats
+#   Ollama       - optional offline fallback: ollama pull llama3.2:3b
+#   cookies.txt  - optional, or stay signed in to YouTube in Edge/Chrome/Firefox
+# ---------------------------------------------------------------
